@@ -1,0 +1,37 @@
+{
+  "name": "opencode-session-bus",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Sibling (top-level) sessions and session-to-session messaging for OpenCode V2",
+  "license": "MIT",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "sessions",
+    "multi-agent",
+    "messaging"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/opencode-session-bus.git"
+  },
+  "homepage": "https://github.com/OWNER/opencode-session-bus#readme",
+  "bugs": {
+    "url": "https://github.com/OWNER/opencode-session-bus/issues"
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "types",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "index.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.8.2"
+  }
+}
