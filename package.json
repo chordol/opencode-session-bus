@@ -13,11 +13,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/opencode-session-bus.git"
+    "url": "git+https://github.com/chordol/opencode-session-bus.git"
   },
-  "homepage": "https://github.com/OWNER/opencode-session-bus#readme",
+  "homepage": "https://github.com/chordol/opencode-session-bus#readme",
   "bugs": {
-    "url": "https://github.com/OWNER/opencode-session-bus/issues"
+    "url": "https://github.com/chordol/opencode-session-bus/issues"
   },
   "files": [
     "index.ts",
