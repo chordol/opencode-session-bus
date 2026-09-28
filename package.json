@@ -24,6 +24,7 @@
     "src",
     "types",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "main": "index.ts",

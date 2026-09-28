@@ -1,5 +1,8 @@
 # opencode-session-bus
 
+[![CI](https://github.com/chordol/opencode-session-bus/actions/workflows/ci.yml/badge.svg)](https://github.com/chordol/opencode-session-bus/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 An OpenCode V2 plugin that lets agents **spawn independent sibling sessions** and
 **message each other** inside one OpenCode runtime.
 
@@ -25,26 +28,38 @@ Use siblings when two or more workstreams should run in parallel as peers — fo
 example a coder and a reviewer, or several researchers reporting to a
 coordinator.
 
+## Requirements
+
+- OpenCode **V2** (tested on `v2.0.18`).
+- No runtime dependencies — the plugin consumes the V2 context structurally and
+  does not import `@opencode/plugin` (whose `define` is the identity function).
+
 ## Install
 
-`session-bus` is a plugin **directory**. Copy it into either plugins folder:
+`session-bus` is a plugin **directory** that OpenCode auto-discovers. Clone and
+link (or copy) it into either plugins folder — **no `opencode.json` entry is
+required**.
 
-```
+```sh
+git clone https://github.com/chordol/opencode-session-bus
+mkdir -p ~/.config/opencode/plugins
+
 # global — loaded by every OpenCode V2 session on this machine
-~/.config/opencode/plugins/session-bus/
+ln -s "$PWD/opencode-session-bus" ~/.config/opencode/plugins/session-bus
+# or copy:  cp -R opencode-session-bus ~/.config/opencode/plugins/session-bus
 
 # project-local — loaded only for this project
-.opencode/plugins/session-bus/
+# mkdir -p .opencode/plugins && ln -s "$PWD/opencode-session-bus" .opencode/plugins/session-bus
 ```
 
-OpenCode auto-discovers immediate package directories under those paths and
-loads `index.ts` as the entrypoint. **No `opencode.json` entry is required.**
+OpenCode loads `index.ts` as the entrypoint of each immediate package directory
+under those paths. To confirm it loaded, the running service lists it as
+`session-bus` (`opencode api get /api/plugin`).
 
-The plugin has **no runtime dependency** on `@opencode/plugin`; it default-exports
-`{ id, setup }` and consumes the context structurally, so it loads with zero
-module resolution.
+### npm (not published yet)
 
-If you prefer npm, install the package and reference it in `opencode.json`:
+This package is **not on npm**. If you publish it yourself, reference it in
+`opencode.json`:
 
 ```jsonc
 { "plugins": ["opencode-session-bus"] }
