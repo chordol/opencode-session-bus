@@ -1,7 +1,7 @@
 // src/sessions.ts — sibling session lifecycle + reply extraction. See docs/DESIGN.md.
 // Shapes are grounded in docs/API-REFERENCE.md (verified against @opencode/client@2.0.18).
 import type { Ctx, SessionRef, RunResult, DeliveryMode, SessionID, ModelRef } from "./types.js";
-import { zdrModelError, zdrDetail } from "./zdr.js";
+import { zdrDetail } from "./zdr.js";
 
 /** Sleep helper (Bun + Node both expose a global setTimeout). */
 function sleep(ms: number): Promise<void> {
@@ -117,8 +117,6 @@ export async function createSibling(
     title: opts?.title,
   };
   if (opts?.model) {
-    const zdrErr = zdrModelError(opts.model);
-    if (zdrErr) throw new Error(zdrErr);
     input.model = normalizeModelRef(opts.model);
   }
   if (opts?.directory) input.location = { directory: opts.directory };
@@ -150,8 +148,6 @@ export async function setSessionModel(
   if (!sessionID) return { ok: false, error: "sessionID is required" };
   if (!model?.providerID) return { ok: false, error: "model.providerID is required" };
   if (!model?.id) return { ok: false, error: "model.id is required" };
-  const zdrErr = zdrModelError(model);
-  if (zdrErr) return { ok: false, error: zdrErr };
   const domain = ctx.session as any;
   const fn = domain.switchModel ?? domain.setModel;
   if (typeof fn !== "function") {

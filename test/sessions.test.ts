@@ -379,13 +379,12 @@ test("deleteSession reports unavailability when the runtime has no remove", asyn
 
 // ZDR guard ------------------------------------------------------------------
 
-test("createSibling rejects a model with no ZDR endpoint before creating", async () => {
+test("createSibling allows an Anthropic model now account ZDR is off for the group", async () => {
   const ctx = makeFakeCtx();
 
-  await expect(
-    createSibling(ctx, { title: "worker", model: { providerID: "openrouter", id: "anthropic/claude-fable-5.2" } }),
-  ).rejects.toThrow(/ZDR-safe/);
-  expect(ctx.calls.created).toHaveLength(0);
+  await createSibling(ctx, { title: "worker", model: { providerID: "openrouter", id: "anthropic/claude-fable-5.2" } });
+
+  expect(ctx.calls.created[0].model).toEqual({ providerID: "openrouter", id: "anthropic/claude-fable-5.2" });
 });
 
 test("createSibling allows a ZDR-safe model", async () => {
@@ -396,7 +395,7 @@ test("createSibling allows a ZDR-safe model", async () => {
   expect(ctx.calls.created[0].model).toEqual({ providerID: "openrouter", id: "openai/gpt-6-luna" });
 });
 
-test("setSessionModel refuses a model with no ZDR endpoint", async () => {
+test("setSessionModel allows an Anthropic model now account ZDR is off for the group", async () => {
   const ctx = makeFakeCtx();
 
   const res = await setSessionModel(ctx, {
@@ -404,9 +403,8 @@ test("setSessionModel refuses a model with no ZDR endpoint", async () => {
     model: { providerID: "openrouter", id: "anthropic/claude-fable-5.2" },
   });
 
-  expect(res.ok).toBe(false);
-  expect(res.error).toContain("ZDR-safe");
-  expect(ctx.calls.switched).toHaveLength(0);
+  expect(res.ok).toBe(true);
+  expect(ctx.calls.switched).toHaveLength(1);
 });
 
 test("runSibling surfaces a provider error instead of a silent empty done", async () => {

@@ -90,21 +90,22 @@ test("session_model switches an existing session through the tool", async () => 
   expect((res.metadata as any).ok).toBe(true);
 });
 
-test("session_new refuses a model with no ZDR endpoint, legibly", async () => {
-  const ctx = makeFakeCtx();
+test("session_new allows an Anthropic model now account ZDR is off for the group", async () => {
+  const ctx = makeFakeCtx({ afterPrompt: () => ctx.appendAssistant("done") });
   await registerTools(ctx);
 
   const tool = toolNamed(ctx, "session_new");
   const res = await tool.execute(
-    { task: "go", model: { providerID: "openrouter", id: "anthropic/claude-fable-5.2" } },
+    { task: "go", model: { providerID: "openrouter", id: "anthropic/claude-fable-5.2", variant: "low" }, timeoutMs: 5_000 },
     tctx("ses_me"),
   );
 
-  expect(String(res.content)).toContain("ZDR-safe");
-  expect(ctx.calls.created).toHaveLength(0);
+  expect(ctx.calls.created).toHaveLength(1);
+  expect(ctx.calls.created[0].model).toEqual({ providerID: "openrouter", id: "anthropic/claude-fable-5.2", variant: "low" });
+  expect((res.metadata as any).status).toBe("done");
 });
 
-test("session_model refuses a model with no ZDR endpoint, legibly", async () => {
+test("session_model switches an Anthropic model now account ZDR is off for the group", async () => {
   const ctx = makeFakeCtx();
   await registerTools(ctx);
 
@@ -114,7 +115,6 @@ test("session_model refuses a model with no ZDR endpoint, legibly", async () => 
     tctx("ses_me"),
   );
 
-  expect((res.metadata as any).ok).toBe(false);
-  expect(String(res.content)).toContain("ZDR-safe");
-  expect(ctx.calls.switched).toHaveLength(0);
+  expect((res.metadata as any).ok).toBe(true);
+  expect(ctx.calls.switched).toHaveLength(1);
 });

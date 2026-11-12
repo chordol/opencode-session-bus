@@ -22,7 +22,7 @@ import {
   waitIdle,
 } from "./sessions.js";
 import { formatMessage, listRegistered, registerSession, sendToSession } from "./bus.js";
-import { zdrModelError, zdrDetail, ZDR_SAFE_MODELS } from "./zdr.js";
+import { zdrDetail, ZDR_SAFE_MODELS } from "./zdr.js";
 
 const JSON_OBJ = { type: "object", additionalProperties: false } as const;
 
@@ -66,10 +66,6 @@ function makeTools(ctx: Ctx): ToolInfo[] {
     },
     async execute(input: any, tctx): Promise<ToolResult> {
       const caller = tctx.sessionID;
-      const zdrErr = zdrModelError(input.model);
-      if (zdrErr) {
-        return { content: `Cannot start sibling: ${zdrErr}`, metadata: { ok: false, model: input.model } };
-      }
       try {
         await registerSession(ctx, { id: caller, title: caller, status: "idle" }, "caller");
       } catch { /* registry is best-effort */ }
