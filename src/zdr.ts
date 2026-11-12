@@ -27,6 +27,16 @@ export function isZdrViolation(message?: string): boolean {
   return /zdr[- ]?violation|guardrail restrictions and data policy/i.test(message);
 }
 
+/**
+ * @deprecated Compatibility shim kept for an older already-loaded plugin
+ * revision that imports this name. It never refuses a model: the account-level
+ * ZDR exception for the Anthropic group (2026-11-11) means no model is blocked
+ * up front; a real runtime rejection is translated by `zdrDetail` instead.
+ */
+export function zdrModelError(_model?: unknown): string | undefined {
+  return undefined;
+}
+
 const FALLBACK_HINT = `choose a ZDR-safe model: ${ZDR_SAFE_MODELS.join(", ")}`;
 
 /**
