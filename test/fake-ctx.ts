@@ -19,6 +19,7 @@ export interface FakeCalls {
   prompts: PromptRecord[];
   synthetics: PromptRecord[];
   waited: string[];
+  removed: string[];
   contexts: string[];
   gets: string[];
   registeredTools: ToolInfo[];
@@ -48,6 +49,8 @@ export interface FakeOverrides {
   syntheticError?: unknown;
   /** If set, `session.create` rejects with this error. */
   createError?: unknown;
+  /** If set, `session.remove` rejects with this error. */
+  removeError?: unknown;
   /** Seed entries for the Map-backed storage. */
   storageSeed?: Record<string, unknown>;
   session?: Partial<Ctx["session"]>;
@@ -103,6 +106,7 @@ export function makeFakeCtx(overrides: FakeOverrides = {}): FakeCtx {
     prompts: [],
     synthetics: [],
     waited: [],
+    removed: [],
     contexts: [],
     gets: [],
     registeredTools: [],
@@ -155,6 +159,11 @@ export function makeFakeCtx(overrides: FakeOverrides = {}): FakeCtx {
     interrupt: async () => {},
     update: async () => ({ ok: true }),
     move: async () => ({ ok: true }),
+    remove: async (input) => {
+      if (overrides.removeError) throw overrides.removeError;
+      calls.removed.push(input.sessionID);
+      return undefined;
+    },
     ...overrides.session,
   };
 

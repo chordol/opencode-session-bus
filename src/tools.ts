@@ -9,6 +9,7 @@
 import type { Ctx, ToolInfo, ToolResult } from "./types.js";
 import {
   createSibling,
+  deleteSession,
   listSessions,
   lastAssistantText,
   runSibling,
@@ -169,7 +170,33 @@ function makeTools(ctx: Ctx): ToolInfo[] {
     },
   };
 
-  return [sessionNew, sessionSend, sessionList, sessionRead, sessionWait];
+  const sessionDelete: ToolInfo = {
+    name: "session_delete",
+    description:
+      "Permanently delete another session. Destructive and irreversible: the session and its " +
+      "history are removed. Refuses the caller's own session unless force=true is passed.",
+    input: {
+      ...JSON_OBJ,
+      properties: {
+        sessionID: { type: "string", description: "Session id to delete (ses_...)." },
+        force: { type: "boolean", description: "Allow deleting the caller's own session (default false)." },
+      },
+      required: ["sessionID"],
+    },
+    async execute(input: any, tctx): Promise<ToolResult> {
+      const res = await deleteSession(ctx, {
+        sessionID: input.sessionID,
+        self: tctx.sessionID,
+        force: input.force === true,
+      });
+      return {
+        content: res.ok ? `Deleted session ${input.sessionID}.` : `Delete failed: ${res.error}`,
+        metadata: { sessionID: input.sessionID, ok: res.ok },
+      };
+    },
+  };
+
+  return [sessionNew, sessionSend, sessionList, sessionRead, sessionWait, sessionDelete];
 }
 
 /** Register all session-bus tools for this location. */

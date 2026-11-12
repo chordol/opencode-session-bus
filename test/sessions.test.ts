@@ -3,6 +3,7 @@ import { test, expect } from "bun:test";
 import { makeFakeCtx, assistantMessage } from "./fake-ctx.js";
 import {
   createSibling,
+  deleteSession,
   lastAssistantText,
   runSibling,
   sendAndWait,
@@ -175,4 +176,61 @@ test("sendAndWait returns undefined when only the baseline exists", async () => 
   const text = await sendAndWait(ctx, "ses_test_1", "hello", "steer", 60);
 
   expect(text).toBeUndefined();
+});
+
+// (f) deleteSession -----------------------------------------------------------
+
+test("deleteSession removes the target session", async () => {
+  const ctx = makeFakeCtx();
+
+  const res = await deleteSession(ctx, { sessionID: "ses_other", self: "ses_me" });
+
+  expect(res).toEqual({ ok: true });
+  expect(ctx.calls.removed).toEqual(["ses_other"]);
+});
+
+test("deleteSession refuses the caller's own session without force", async () => {
+  const ctx = makeFakeCtx();
+
+  const res = await deleteSession(ctx, { sessionID: "ses_me", self: "ses_me" });
+
+  expect(res.ok).toBe(false);
+  expect(res.error).toContain("own session");
+  expect(ctx.calls.removed).toEqual([]);
+});
+
+test("deleteSession allows the caller's own session with force", async () => {
+  const ctx = makeFakeCtx();
+
+  const res = await deleteSession(ctx, { sessionID: "ses_me", self: "ses_me", force: true });
+
+  expect(res).toEqual({ ok: true });
+  expect(ctx.calls.removed).toEqual(["ses_me"]);
+});
+
+test("deleteSession requires a sessionID", async () => {
+  const ctx = makeFakeCtx();
+
+  const res = await deleteSession(ctx, { sessionID: "" });
+
+  expect(res.ok).toBe(false);
+  expect(ctx.calls.removed).toEqual([]);
+});
+
+test("deleteSession reports a runtime error without throwing", async () => {
+  const ctx = makeFakeCtx({ removeError: new Error("nope") });
+
+  const res = await deleteSession(ctx, { sessionID: "ses_other", self: "ses_me" });
+
+  expect(res.ok).toBe(false);
+  expect(res.error).toContain("nope");
+});
+
+test("deleteSession reports unavailability when the runtime has no remove", async () => {
+  const ctx = makeFakeCtx({ session: { remove: undefined } });
+
+  const res = await deleteSession(ctx, { sessionID: "ses_other", self: "ses_me" });
+
+  expect(res.ok).toBe(false);
+  expect(res.error).toContain("unavailable");
 });

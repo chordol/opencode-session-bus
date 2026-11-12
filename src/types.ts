@@ -70,6 +70,10 @@ export interface Ctx {
     interrupt(input: { sessionID: SessionID; continue?: boolean }): Promise<void>;
     update(input: any): Promise<any>;
     move(input: any): Promise<any>;
+    /** Delete a session. Present on the V2 SessionDomain Pick as `remove`. */
+    remove(input: { sessionID: SessionID }): Promise<any>;
+    /** Alias some builds expose; probed at runtime by deleteSession(). */
+    delete?(input: { sessionID: SessionID }): Promise<any>;
   };
   readonly tool: {
     transform(cb: (editor: ToolEditor) => void): Promise<Registration>;

@@ -210,6 +210,36 @@ export async function waitIdle(ctx: Ctx, sessionID: SessionID, timeoutMs = 300_0
 }
 
 /**
+ * Delete a session. Never throws; returns `{ok:false,error}` instead.
+ *
+ * Self-deletion is refused unless `force` is set: deleting the caller's own
+ * session mid-turn would tear down the runtime the tool is running inside.
+ * The runtime exposes deletion as `ctx.session.remove` (HTTP `DELETE
+ * /api/session/{id}`); `delete` is probed as a fallback.
+ */
+export async function deleteSession(
+  ctx: Ctx,
+  opts: { sessionID: SessionID; self?: SessionID; force?: boolean },
+): Promise<{ ok: boolean; error?: string }> {
+  const { sessionID, self, force } = opts;
+  if (!sessionID) return { ok: false, error: "sessionID is required" };
+  if (self && sessionID === self && !force) {
+    return { ok: false, error: "refusing to delete the caller's own session; pass force=true to override" };
+  }
+  const domain = ctx.session as any;
+  const fn = domain.remove ?? domain.delete;
+  if (typeof fn !== "function") {
+    return { ok: false, error: "session deletion is unavailable on this runtime (no session.remove)" };
+  }
+  try {
+    await fn.call(domain, { sessionID });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
  * Run a full sibling round-trip: create, send the task, wait for a new completed
  * reply (default 300 s), and return it. Never throws.
  */

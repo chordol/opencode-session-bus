@@ -14,6 +14,6 @@ export default {
   async setup(ctx: Ctx): Promise<void> {
     await registerTools(ctx);
     // eslint-disable-next-line no-console
-    console.log("[session-bus] ready: session_new, session_send, session_list, session_read, session_wait");
+    console.log("[session-bus] ready: session_new, session_send, session_list, session_read, session_wait, session_delete");
   },
 };
