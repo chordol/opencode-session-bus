@@ -15,11 +15,15 @@ export interface PromptRecord {
 
 export interface FakeCalls {
   /** Raw input passed to `session.create`, in order. */
-  created: Array<{ agent?: string; title?: string; model?: unknown }>;
+  created: Array<{ agent?: string; title?: string; model?: unknown; location?: { directory: string } | null }>;
   prompts: PromptRecord[];
   synthetics: PromptRecord[];
   waited: string[];
   removed: string[];
+  /** Raw input passed to `session.move`, in order. */
+  moved: Array<{ sessionID: string; directory: string }>;
+  /** Raw input passed to `session.switchModel`, in order. */
+  switched: Array<{ sessionID: string; model: unknown }>;
   contexts: string[];
   gets: string[];
   registeredTools: ToolInfo[];
@@ -51,6 +55,10 @@ export interface FakeOverrides {
   createError?: unknown;
   /** If set, `session.remove` rejects with this error. */
   removeError?: unknown;
+  /** If set, `session.move` rejects with this error. */
+  moveError?: unknown;
+  /** If set, `session.switchModel` rejects with this error. */
+  switchModelError?: unknown;
   /** Seed entries for the Map-backed storage. */
   storageSeed?: Record<string, unknown>;
   session?: Partial<Ctx["session"]>;
@@ -107,6 +115,8 @@ export function makeFakeCtx(overrides: FakeOverrides = {}): FakeCtx {
     synthetics: [],
     waited: [],
     removed: [],
+    moved: [],
+    switched: [],
     contexts: [],
     gets: [],
     registeredTools: [],
@@ -120,12 +130,12 @@ export function makeFakeCtx(overrides: FakeOverrides = {}): FakeCtx {
   };
 
   const session: Ctx["session"] = {
-    create: async (input: { agent?: string; title?: string; model?: unknown }) => {
+    create: async (input: { agent?: string; title?: string; model?: unknown; location?: { directory: string } | null }) => {
       if (overrides.createError) throw overrides.createError;
       calls.created.push({ ...(input ?? {}) });
       const n = ++createdCount;
       // Deliberately no parentID: mirrors a top-level/sibling session.
-      return { id: `ses_test_${n}`, title: input?.title, time: { updated: Date.now() } };
+      return { id: `ses_test_${n}`, title: input?.title, location: input?.location ?? undefined, time: { updated: Date.now() } };
     },
     get: async (input) => {
       calls.gets.push(input.sessionID);
@@ -158,11 +168,20 @@ export function makeFakeCtx(overrides: FakeOverrides = {}): FakeCtx {
     },
     interrupt: async () => {},
     update: async () => ({ ok: true }),
-    move: async () => ({ ok: true }),
+    move: async (input: { sessionID: string; directory: string }) => {
+      if (overrides.moveError) throw overrides.moveError;
+      calls.moved.push({ ...input });
+      return { ok: true };
+    },
     remove: async (input) => {
       if (overrides.removeError) throw overrides.removeError;
       calls.removed.push(input.sessionID);
       return undefined;
+    },
+    switchModel: async (input) => {
+      if (overrides.switchModelError) throw overrides.switchModelError;
+      calls.switched.push({ ...input });
+      return { ok: true };
     },
     ...overrides.session,
   };

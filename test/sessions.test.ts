@@ -5,8 +5,10 @@ import {
   createSibling,
   deleteSession,
   lastAssistantText,
+  moveSession,
   runSibling,
   sendAndWait,
+  setSessionModel,
   waitForNewReply,
 } from "../src/sessions.js";
 
@@ -24,6 +26,146 @@ test("createSibling yields a session with no parentID", async () => {
   expect(ctx.calls.created).toHaveLength(1);
   expect("parentID" in ctx.calls.created[0]).toBe(false);
   expect(ctx.calls.created[0]).toEqual({ agent: undefined, title: "worker" });
+});
+
+test("createSibling passes a directory as location when given", async () => {
+  const ctx = makeFakeCtx({ context: [] });
+
+  const ref = await createSibling(ctx, { title: "worker", directory: "/tmp/target" });
+
+  expect(ref.id).toBe("ses_test_1");
+  expect(ctx.calls.created[0].location).toEqual({ directory: "/tmp/target" });
+});
+
+test("createSibling omits location when no directory is given", async () => {
+  const ctx = makeFakeCtx({ context: [] });
+
+  await createSibling(ctx, { title: "worker" });
+
+  expect("location" in ctx.calls.created[0]).toBe(false);
+});
+
+test("createSibling passes the model + variant at create when given", async () => {
+  const ctx = makeFakeCtx({ context: [] });
+
+  await createSibling(ctx, { title: "worker", model: { providerID: "openrouter", id: "deepseek/deepseek-v4.1-flash", variant: "low" } });
+
+  expect(ctx.calls.created[0].model).toEqual({ providerID: "openrouter", id: "deepseek/deepseek-v4.1-flash", variant: "low" });
+});
+
+test("createSibling omits variant when the model has none", async () => {
+  const ctx = makeFakeCtx({ context: [] });
+
+  await createSibling(ctx, { title: "worker", model: { providerID: "openrouter", id: "openai/gpt-6-luna" } });
+
+  expect(ctx.calls.created[0].model).toEqual({ providerID: "openrouter", id: "openai/gpt-6-luna" });
+  expect("variant" in (ctx.calls.created[0].model as any)).toBe(false);
+});
+
+test("createSibling sends no model when none is given (unchanged behavior)", async () => {
+  const ctx = makeFakeCtx({ context: [] });
+
+  await createSibling(ctx, { title: "worker" });
+
+  expect(ctx.calls.created[0].model).toBeUndefined();
+});
+
+// setSessionModel -----------------------------------------------------------
+
+test("setSessionModel switches an existing session's model + variant", async () => {
+  const ctx = makeFakeCtx();
+
+  const res = await setSessionModel(ctx, {
+    sessionID: "ses_child",
+    model: { providerID: "openrouter", id: "openai/gpt-6-luna", variant: "low" },
+  });
+
+  expect(res).toEqual({ ok: true });
+  expect(ctx.calls.switched).toEqual([
+    { sessionID: "ses_child", model: { providerID: "openrouter", id: "openai/gpt-6-luna", variant: "low" } },
+  ]);
+});
+
+test("setSessionModel drops an undefined variant", async () => {
+  const ctx = makeFakeCtx();
+
+  await setSessionModel(ctx, { sessionID: "ses_child", model: { providerID: "openrouter", id: "x/y" } });
+
+  const model = ctx.calls.switched[0].model as any;
+  expect(model).toEqual({ providerID: "openrouter", id: "x/y" });
+  expect("variant" in model).toBe(false);
+});
+
+test("setSessionModel requires a sessionID and a providerID/id", async () => {
+  const ctx = makeFakeCtx();
+
+  expect((await setSessionModel(ctx, { sessionID: "", model: { providerID: "openrouter", id: "x/y" } })).ok).toBe(false);
+  expect((await setSessionModel(ctx, { sessionID: "ses_x", model: { providerID: "", id: "x/y" } })).ok).toBe(false);
+  expect((await setSessionModel(ctx, { sessionID: "ses_x", model: { providerID: "openrouter", id: "" } })).ok).toBe(false);
+  expect(ctx.calls.switched).toHaveLength(0);
+});
+
+test("setSessionModel reports a runtime error without throwing", async () => {
+  const ctx = makeFakeCtx({ switchModelError: new Error("no such model") });
+
+  const res = await setSessionModel(ctx, { sessionID: "ses_child", model: { providerID: "openrouter", id: "x/y" } });
+
+  expect(res.ok).toBe(false);
+  expect(res.error).toContain("no such model");
+});
+
+test("setSessionModel reports unavailability when the runtime has no switchModel", async () => {
+  const ctx = makeFakeCtx({ session: { switchModel: undefined } });
+
+  const res = await setSessionModel(ctx, { sessionID: "ses_child", model: { providerID: "openrouter", id: "x/y" } });
+
+  expect(res.ok).toBe(false);
+  expect(res.error).toContain("unavailable");
+});
+
+test("runSibling threads the model into creation", async () => {
+  const ctx = makeFakeCtx({ afterPrompt: () => ctx.appendAssistant("done") });
+
+  await runSibling(ctx, { task: "go", model: { providerID: "openrouter", id: "x/y", variant: "high" }, timeoutMs: 5_000 });
+
+  expect(ctx.calls.created[0].model).toEqual({ providerID: "openrouter", id: "x/y", variant: "high" });
+});
+
+// moveSession ---------------------------------------------------------------
+
+test("moveSession calls session.move with the sessionID and directory", async () => {
+  const ctx = makeFakeCtx();
+
+  const res = await moveSession(ctx, { sessionID: "ses_other", directory: "/tmp/dest" });
+
+  expect(res).toEqual({ ok: true });
+  expect(ctx.calls.moved).toEqual([{ sessionID: "ses_other", directory: "/tmp/dest" }]);
+});
+
+test("moveSession requires a sessionID and directory", async () => {
+  const ctx = makeFakeCtx();
+
+  expect((await moveSession(ctx, { sessionID: "", directory: "/tmp/dest" })).ok).toBe(false);
+  expect((await moveSession(ctx, { sessionID: "ses_x", directory: "" })).ok).toBe(false);
+  expect(ctx.calls.moved).toHaveLength(0);
+});
+
+test("moveSession reports a runtime error without throwing", async () => {
+  const ctx = makeFakeCtx({ moveError: new Error("no such dir") });
+
+  const res = await moveSession(ctx, { sessionID: "ses_other", directory: "/tmp/dest" });
+
+  expect(res.ok).toBe(false);
+  expect(res.error).toContain("no such dir");
+});
+
+test("moveSession reports unavailability when the runtime has no move", async () => {
+  const ctx = makeFakeCtx({ session: { move: undefined } });
+
+  const res = await moveSession(ctx, { sessionID: "ses_other", directory: "/tmp/dest" });
+
+  expect(res.ok).toBe(false);
+  expect(res.error).toContain("unavailable");
 });
 
 // (b) lastAssistantText across content shapes --------------------------------
@@ -233,4 +375,72 @@ test("deleteSession reports unavailability when the runtime has no remove", asyn
 
   expect(res.ok).toBe(false);
   expect(res.error).toContain("unavailable");
+});
+
+// ZDR guard ------------------------------------------------------------------
+
+test("createSibling rejects a model with no ZDR endpoint before creating", async () => {
+  const ctx = makeFakeCtx();
+
+  await expect(
+    createSibling(ctx, { title: "worker", model: { providerID: "openrouter", id: "anthropic/claude-fable-5.2" } }),
+  ).rejects.toThrow(/ZDR-safe/);
+  expect(ctx.calls.created).toHaveLength(0);
+});
+
+test("createSibling allows a ZDR-safe model", async () => {
+  const ctx = makeFakeCtx();
+
+  await createSibling(ctx, { title: "worker", model: { providerID: "openrouter", id: "openai/gpt-6-luna" } });
+
+  expect(ctx.calls.created[0].model).toEqual({ providerID: "openrouter", id: "openai/gpt-6-luna" });
+});
+
+test("setSessionModel refuses a model with no ZDR endpoint", async () => {
+  const ctx = makeFakeCtx();
+
+  const res = await setSessionModel(ctx, {
+    sessionID: "ses_child",
+    model: { providerID: "openrouter", id: "anthropic/claude-fable-5.2" },
+  });
+
+  expect(res.ok).toBe(false);
+  expect(res.error).toContain("ZDR-safe");
+  expect(ctx.calls.switched).toHaveLength(0);
+});
+
+test("runSibling surfaces a provider error instead of a silent empty done", async () => {
+  const ctx = makeFakeCtx();
+  ctx.appendMessage({
+    id: "msg_err",
+    type: "assistant",
+    finish: "error",
+    content: [],
+    error: {
+      type: "provider.invalid-request",
+      message: "0 endpoints out of 4 requested are available matching your guardrail restrictions and data policy. ZDR violation (account settings): 4 endpoints excluded",
+    },
+  });
+
+  const result = await runSibling(ctx, { task: "go", timeoutMs: 500 });
+
+  expect(result.status).toBe("error");
+  expect(result.error).toContain("ZDR-safe");
+  expect(result.error).toContain("zero-data-retention");
+});
+
+test("runSibling passes a non-ZDR provider error through unchanged", async () => {
+  const ctx = makeFakeCtx();
+  ctx.appendMessage({
+    id: "msg_err",
+    type: "assistant",
+    finish: "error",
+    content: [],
+    error: { type: "provider.invalid-request", message: "model not found" },
+  });
+
+  const result = await runSibling(ctx, { task: "go", timeoutMs: 500 });
+
+  expect(result.status).toBe("error");
+  expect(result.error).toBe("model not found");
 });

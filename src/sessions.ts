@@ -1,6 +1,7 @@
 // src/sessions.ts — sibling session lifecycle + reply extraction. See docs/DESIGN.md.
 // Shapes are grounded in docs/API-REFERENCE.md (verified against @opencode/client@2.0.18).
-import type { Ctx, SessionRef, RunResult, DeliveryMode, SessionID } from "./types.js";
+import type { Ctx, SessionRef, RunResult, DeliveryMode, SessionID, ModelRef } from "./types.js";
+import { zdrModelError, zdrDetail } from "./zdr.js";
 
 /** Sleep helper (Bun + Node both expose a global setTimeout). */
 function sleep(ms: number): Promise<void> {
@@ -82,6 +83,15 @@ function messageID(msg: any): string | undefined {
   return msg?.id ?? msg?.messageID ?? msg?.message?.id;
 }
 
+/** Extract a provider error message carried on an assistant message, if any. */
+function errorOf(msg: any): string | undefined {
+  const e = msg?.error ?? msg?.info?.error;
+  if (!e) return undefined;
+  if (typeof e === "string") return e;
+  if (typeof e.message === "string") return e.message;
+  return undefined;
+}
+
 async function safeContext(ctx: Ctx, sessionID: SessionID): Promise<any[]> {
   try {
     return asArray(await ctx.session.context({ sessionID }));
@@ -93,16 +103,92 @@ async function safeContext(ctx: Ctx, sessionID: SessionID): Promise<any[]> {
 /**
  * Create a new top-level ("sibling") session. No parentID is passed, so the
  * result is a normal session rather than a child subagent.
+ *
+ * When `model` is given it is passed to `session.create` (which accepts a
+ * `Model.Ref`), so the new session runs that model/reasoning level from its
+ * first turn.
  */
 export async function createSibling(
   ctx: Ctx,
-  opts?: { agent?: string; title?: string },
+  opts?: { agent?: string; title?: string; directory?: string; model?: ModelRef },
 ): Promise<SessionRef> {
-  const raw = await ctx.session.create({ agent: opts?.agent, title: opts?.title });
+  const input: { agent?: string; title?: string; model?: ModelRef; location?: { directory: string } } = {
+    agent: opts?.agent,
+    title: opts?.title,
+  };
+  if (opts?.model) {
+    const zdrErr = zdrModelError(opts.model);
+    if (zdrErr) throw new Error(zdrErr);
+    input.model = normalizeModelRef(opts.model);
+  }
+  if (opts?.directory) input.location = { directory: opts.directory };
+  const raw = await ctx.session.create(input);
   const id = extractID(raw);
   if (!id) throw new Error("session.create returned no session id");
   const title = extractTitle(raw) ?? opts?.title ?? id;
   return { id, title, status: "idle" };
+}
+
+/** Keep only {providerID, id, variant?} and drop an undefined variant. */
+export function normalizeModelRef(model: ModelRef): ModelRef {
+  const out: ModelRef = { providerID: model.providerID, id: model.id };
+  if (model.variant) out.variant = model.variant;
+  return out;
+}
+
+/**
+ * Set/change an existing session's model + reasoning level (`session.switchModel`,
+ * HTTP `POST /api/session/{id}/model` with body `{ model: Model.Ref }`). Never
+ * throws; returns `{ok:false,error}` instead. This is the retarget path for a
+ * session that already exists (an attached or delegated child).
+ */
+export async function setSessionModel(
+  ctx: Ctx,
+  opts: { sessionID: SessionID; model: ModelRef },
+): Promise<{ ok: boolean; error?: string }> {
+  const { sessionID, model } = opts;
+  if (!sessionID) return { ok: false, error: "sessionID is required" };
+  if (!model?.providerID) return { ok: false, error: "model.providerID is required" };
+  if (!model?.id) return { ok: false, error: "model.id is required" };
+  const zdrErr = zdrModelError(model);
+  if (zdrErr) return { ok: false, error: zdrErr };
+  const domain = ctx.session as any;
+  const fn = domain.switchModel ?? domain.setModel;
+  if (typeof fn !== "function") {
+    return { ok: false, error: "session model switching is unavailable on this runtime (no session.switchModel)" };
+  }
+  try {
+    await fn.call(domain, { sessionID, model: normalizeModelRef(model) });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Move an existing session into a directory (HTTP `POST
+ * /api/session/{id}/move`, 204 No Content). Never throws; returns
+ * `{ok:false,error}` instead. Directory control is what lets the voice session
+ * hand a started/moved sibling to the folder it belongs in.
+ */
+export async function moveSession(
+  ctx: Ctx,
+  opts: { sessionID: SessionID; directory: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const { sessionID, directory } = opts;
+  if (!sessionID) return { ok: false, error: "sessionID is required" };
+  if (!directory) return { ok: false, error: "directory is required" };
+  const domain = ctx.session as any;
+  const fn = domain.move ?? domain.moveTo;
+  if (typeof fn !== "function") {
+    return { ok: false, error: "session move is unavailable on this runtime (no session.move)" };
+  }
+  try {
+    await fn.call(domain, { sessionID, directory });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Send text to a session. `mode` defaults to "steer"; "queue" defers delivery. */
@@ -171,6 +257,17 @@ export async function lastAssistantText(ctx: Ctx, sessionID: SessionID): Promise
     if (roleOf(messages[i]) !== "assistant") continue;
     const text = extractText(messages[i]);
     if (text !== undefined) return text;
+  }
+  return undefined;
+}
+
+/** The provider error from a session's last assistant message, if the turn failed. */
+export async function siblingFailure(ctx: Ctx, sessionID: SessionID): Promise<string | undefined> {
+  const messages = await safeContext(ctx, sessionID);
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (roleOf(messages[i]) !== "assistant") continue;
+    const err = errorOf(messages[i]);
+    if (err) return err;
   }
   return undefined;
 }
@@ -245,15 +342,21 @@ export async function deleteSession(
  */
 export async function runSibling(
   ctx: Ctx,
-  opts: { task: string; agent?: string; title?: string; timeoutMs?: number },
+  opts: { task: string; agent?: string; title?: string; timeoutMs?: number; directory?: string; model?: ModelRef },
 ): Promise<RunResult> {
   let sessionID = "";
   try {
-    const ref = await createSibling(ctx, { agent: opts.agent, title: opts.title });
+    const ref = await createSibling(ctx, { agent: opts.agent, title: opts.title, directory: opts.directory, model: opts.model });
     sessionID = ref.id;
     await sendPrompt(ctx, ref.id, opts.task);
     const text = await waitForNewReply(ctx, ref.id, new Set(), opts.timeoutMs ?? 300_000);
     if (text === undefined) return { sessionID, status: "timeout" };
+    if (text === "") {
+      // A finished turn with no text is usually a provider failure (e.g. the
+      // account-ZDR rejection). Surface it legibly instead of a silent "done".
+      const err = await siblingFailure(ctx, ref.id);
+      if (err) return { sessionID, status: "error", error: zdrDetail(err) };
+    }
     return { sessionID, status: "done", text };
   } catch (err) {
     return { sessionID, status: "error", error: err instanceof Error ? err.message : String(err) };

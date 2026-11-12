@@ -7,6 +7,17 @@
 export type SessionID = string;
 export type DeliveryMode = "steer" | "queue";
 
+/**
+ * A model reference: which model a session runs, plus the optional reasoning /
+ * thinking level in `variant` (e.g. "low" | "medium" | "high"). Matches the
+ * schema `Model.Ref` (`{ id, providerID, variant? }`).
+ */
+export interface ModelRef {
+  providerID: string;
+  id: string;
+  variant?: string;
+}
+
 export interface SessionRef {
   id: SessionID;
   title: string;
@@ -61,7 +72,7 @@ export interface Registration { dispose(): Promise<void> }
 
 export interface Ctx {
   readonly session: {
-    create(input: { agent?: string; title?: string; model?: unknown }): Promise<any>;
+    create(input: { agent?: string; title?: string; model?: ModelRef | null; location?: { directory: string } | null }): Promise<any>;
     get(input: { sessionID: SessionID }): Promise<any>;
     prompt(input: { sessionID: SessionID; text: string; delivery?: DeliveryMode }): Promise<any>;
     synthetic(input: { sessionID: SessionID; text: string; description?: string; delivery?: DeliveryMode }): Promise<any>;
@@ -69,7 +80,10 @@ export interface Ctx {
     context(input: { sessionID: SessionID }): Promise<ReadonlyArray<any>>;
     interrupt(input: { sessionID: SessionID; continue?: boolean }): Promise<void>;
     update(input: any): Promise<any>;
-    move(input: any): Promise<any>;
+    /** Set/change the session's model + reasoning level. HTTP `POST /api/session/{id}/model`; body `{ model: Model.Ref }`. */
+    switchModel(input: { sessionID: SessionID; model: ModelRef }): Promise<any>;
+    /** Move a session to a directory. HTTP `POST /api/session/{id}/move`; 204 No Content. */
+    move(input: { sessionID: SessionID; directory: string }): Promise<any>;
     /** Delete a session. Present on the V2 SessionDomain Pick as `remove`. */
     remove(input: { sessionID: SessionID }): Promise<any>;
     /** Alias some builds expose; probed at runtime by deleteSession(). */
